@@ -1,0 +1,14 @@
+fastapi
+uvicorn[standard]
+pydantic[email]
+pydantic-settings
+SQLAlchemy
+alembic
+asyncpg
+psycopg2-binary
+clickhouse-connect
+redis
+websockets
+passlib[bcrypt]
+python-jose[cryptography]
+python-multipart

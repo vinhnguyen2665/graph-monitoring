@@ -1,0 +1,1 @@
+export const CLIENT_INACTIVE_TIMEOUT_MS = 30000;
