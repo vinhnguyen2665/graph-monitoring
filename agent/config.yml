@@ -1,7 +1,9 @@
 agent_id: "de462949-ff0c-4383-89da-a49d1fb2fc5d"
 agent_token: "demo-secret-agent-token-123456"
 server_url: "http://localhost:8000"
-log_path: "/home/vinhn/0_PROJECTS/NginxMonitoringDashboard/agent/dummy_access.log"
+log_path: 
+  - "/home/vinhn/0_PROJECTS/NginxMonitoringDashboard/agent/dummy_access.log"
+  - "/home/vinhn/0_PROJECTS/NginxMonitoringDashboard/agent/dummy_access_2.log"
 batch_size: 5
 flush_interval_seconds: 2
 offset_file: "/home/vinhn/0_PROJECTS/NginxMonitoringDashboard/agent/agent.offset"

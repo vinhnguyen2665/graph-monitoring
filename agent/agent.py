@@ -1,7 +1,9 @@
 import datetime
+import glob
 import json
 import logging
 import os
+import re
 import time
 
 import click
@@ -19,19 +21,101 @@ def setup_logging(debug=False):
     logging.basicConfig(level=level, format='%(asctime)s [%(levelname)s] %(message)s')
 
 
-def get_offset(offset_file):
+def load_offsets(offset_file):
     if os.path.exists(offset_file):
         with open(offset_file, 'r') as f:
             try:
-                return int(f.read().strip())
-            except ValueError:
-                return 0
-    return 0
+                content = f.read().strip()
+                if content.startswith('{'):
+                    return json.loads(content)
+                else:
+                    # Fallback for old single offset format
+                    return {}
+            except Exception:
+                return {}
+    return {}
 
 
-def save_offset(offset_file, offset):
-    with open(offset_file, 'w') as f:
-        f.write(str(offset))
+def save_offsets(offset_file, offsets):
+    try:
+        with open(offset_file, 'w') as f:
+            json.dump(offsets, f)
+    except Exception as e:
+        logging.error(f"Failed to save offsets to {offset_file}: {e}")
+
+
+def find_files(patterns):
+    if not isinstance(patterns, list):
+        patterns = [patterns]
+    
+    matched_files = set()
+    for pattern in patterns:
+        # 1. Try glob first
+        glob_matches = glob.glob(pattern)
+        if glob_matches:
+            for f in glob_matches:
+                if os.path.isfile(f):
+                    matched_files.add(os.path.abspath(f))
+            continue
+            
+        # 2. Try regex
+        norm_pattern = os.path.normpath(pattern)
+        dir_name = os.path.dirname(norm_pattern)
+        file_pattern = os.path.basename(norm_pattern)
+        
+        if not dir_name:
+            dir_name = '.'
+            
+        if os.path.exists(dir_name) and os.path.isdir(dir_name):
+            try:
+                regex = re.compile(file_pattern)
+                for entry in os.listdir(dir_name):
+                    full_path = os.path.join(dir_name, entry)
+                    if os.path.isfile(full_path) and regex.search(entry):
+                        matched_files.add(os.path.abspath(full_path))
+            except re.error as e:
+                logging.error(f"Invalid regex pattern {file_pattern}: {e}")
+                
+        # 3. Direct check
+        if os.path.isfile(pattern):
+            matched_files.add(os.path.abspath(pattern))
+            
+    return sorted(list(matched_files))
+
+
+def update_tracked_files(patterns, open_files, file_offsets):
+    current_files = find_files(patterns)
+    
+    # Close and remove files that are no longer matched or existing
+    for path in list(open_files.keys()):
+        if path not in current_files or not os.path.exists(path):
+            logging.info(f"File {path} is no longer matched or exists. Closing handle.")
+            try:
+                open_files[path].close()
+            except Exception:
+                pass
+            open_files.pop(path)
+            
+    # Open new files
+    for path in current_files:
+        if path not in open_files:
+            try:
+                f = open(path, 'r')
+                offset = file_offsets.get(path, 0)
+                try:
+                    size = os.path.getsize(path)
+                    if offset > size:
+                        logging.info(f"Offset for new tracked file {path} ({offset}) is greater than size ({size}). Resetting to 0.")
+                        offset = 0
+                except OSError:
+                    offset = 0
+                
+                f.seek(offset)
+                open_files[path] = f
+                file_offsets[path] = offset
+                logging.info(f"Now tracking {path} at offset {offset}")
+            except Exception as e:
+                logging.error(f"Failed to open file {path}: {e}")
 
 
 def fix_json_string(line):
@@ -85,65 +169,79 @@ def run(config):
     batch_size = cfg.get('batch_size', 100)
     flush_interval = cfg.get('flush_interval_seconds', 3)
 
-    if not os.path.exists(log_path):
-        logging.error(f"Log file not found: {log_path}")
-        return
+    file_offsets = load_offsets(offset_file)
+    open_files = {}
 
-    offset = get_offset(offset_file)
-    logging.info(f"Starting agent. Tailing {log_path} from offset {offset}")
+    update_tracked_files(log_path, open_files, file_offsets)
+    if not open_files:
+        logging.warning(f"No log files found matching pattern(s): {log_path}")
+
+    logging.info(f"Starting agent. Tailing matching files from log_path: {log_path}")
 
     batch = []
     last_flush = time.time()
+    last_file_scan = time.time()
+    scan_interval = 10.0  # seconds
 
-    with open(log_path, 'r') as f:
-        f.seek(offset)
-
+    try:
         while True:
-            current_pos = f.tell()
-            line = f.readline()
+            # Periodically scan for file changes
+            if time.time() - last_file_scan >= scan_interval:
+                update_tracked_files(log_path, open_files, file_offsets)
+                last_file_scan = time.time()
 
-            if not line:
-                # Handle log rotation
-                if os.path.exists(log_path):
-                    if os.path.getsize(log_path) < current_pos:
-                        logging.info("Log file truncated/rotated. Resetting offset.")
-                        f.seek(0)
-                        save_offset(offset_file, 0)
-                        continue
+            any_lines_read = False
+            for path, f in list(open_files.items()):
+                while len(batch) < batch_size:
+                    current_pos = f.tell()
+                    line = f.readline()
+                    if not line:
+                        # Handle log rotation
+                        try:
+                            if os.path.exists(path) and os.path.getsize(path) < current_pos:
+                                logging.info(f"Log file {path} truncated/rotated. Resetting offset.")
+                                f.seek(0)
+                                file_offsets[path] = 0
+                                any_lines_read = True
+                                continue
+                        except OSError:
+                            pass
+                        break
 
+                    any_lines_read = True
+                    line = fix_json_string(line)
+                    try:
+                        log_obj = json.loads(line)
+                        batch.append(log_obj)
+                        file_offsets[path] = f.tell()
+                    except json.JSONDecodeError:
+                        logging.warning(f"Invalid JSON at offset {current_pos} in {path}: {line}")
+                        file_offsets[path] = f.tell()
+
+                    if len(batch) >= batch_size:
+                        if send_batch(cfg, batch):
+                            save_offsets(offset_file, file_offsets)
+                            batch = []
+                            last_flush = time.time()
+                        else:
+                            logging.info("Sleeping before retry...")
+                            time.sleep(5)
+
+            if not any_lines_read:
                 # Time to flush?
                 if batch and (time.time() - last_flush) >= flush_interval:
                     if send_batch(cfg, batch):
-                        save_offset(offset_file, current_pos)
+                        save_offsets(offset_file, file_offsets)
                         batch = []
                         last_flush = time.time()
-
                 time.sleep(0.5)
-                continue
 
-            # Parse line
-            line = fix_json_string(line)
+    finally:
+        for path, f in open_files.items():
             try:
-                log_obj = json.loads(line)
-                batch.append(log_obj)
-            except json.JSONDecodeError:
-                logging.warning(f"Invalid JSON at offset {current_pos}: {line}")
-
-            # Batch full?
-            if len(batch) >= batch_size:
-                if send_batch(cfg, batch):
-                    save_offset(offset_file, f.tell())
-                    batch = []
-                    last_flush = time.time()
-                else:
-                    # Exponential backoff or sleep on failure
-                    logging.info("Sleeping before retry...")
-                    time.sleep(5)
-                    # We don't advance the file pointer or offset if it fails
-                    # actually we did advance the file pointer, but offset is not saved.
-                    # This means on restart it will resend. If it keeps running it will lose logs 
-                    # unless we keep retrying. For simplicity, we just retry next loop
-                    # but wait, batch is not cleared. So it will retry sending same batch.
+                f.close()
+            except Exception:
+                pass
 
 
 @cli.command()
@@ -163,27 +261,34 @@ def test(config):
 
 
 @cli.command()
-@click.option('--file', required=True, help='Path to log file to validate')
+@click.option('--file', required=True, help='Path or pattern of log files to validate')
 def validate_log(file):
     """Validate log format"""
     setup_logging(True)
-    if not os.path.exists(file):
-        logging.error("File not found")
+    
+    files = find_files(file)
+    if not files:
+        logging.error(f"No files matching path/pattern found: {file}")
         return
 
-    valid = 0
-    invalid = 0
-    with open(file, 'r') as f:
-        for i, line in enumerate(f):
-            try:
-                line = fix_json_string(line)
-                json.loads(line)
-                valid += 1
-            except json.JSONDecodeError as e:
-                logging.error(f"Line {i + 1} is invalid JSON: {e}")
-                invalid += 1
+    for path in files:
+        logging.info(f"Validating file: {path}")
+        valid = 0
+        invalid = 0
+        try:
+            with open(path, 'r') as f:
+                for i, line in enumerate(f):
+                    try:
+                        line = fix_json_string(line)
+                        json.loads(line)
+                        valid += 1
+                    except json.JSONDecodeError as e:
+                        logging.error(f"Line {i + 1} in {path} is invalid JSON: {e}")
+                        invalid += 1
+            logging.info(f"Validation complete for {path}. Valid lines: {valid}, Invalid lines: {invalid}")
+        except Exception as e:
+            logging.error(f"Failed to read file {path}: {e}")
 
-    logging.info(f"Validation complete. Valid lines: {valid}, Invalid lines: {invalid}")
 
 
 if __name__ == '__main__':
