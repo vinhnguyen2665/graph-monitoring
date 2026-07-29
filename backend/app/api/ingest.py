@@ -41,6 +41,9 @@ async def ingest_nginx(
     if not x_agent_id or not x_agent_token:
         raise HTTPException(status_code=401, detail="Missing agent credentials")
 
+    x_agent_id = str(x_agent_id).strip()
+    x_agent_token = str(x_agent_token).strip()
+
     # Validate agent
     agent = None
     try:
@@ -56,8 +59,11 @@ async def ingest_nginx(
         result = await db.execute(stmt)
         agent = result.scalars().first()
 
-    if not agent or not security.verify_password(x_agent_token, agent.token_hash):
-        raise HTTPException(status_code=401, detail="Invalid agent credentials")
+    if not agent:
+        raise HTTPException(status_code=401, detail=f"Agent '{x_agent_id}' not found in database")
+
+    if not security.verify_password(x_agent_token, agent.token_hash):
+        raise HTTPException(status_code=401, detail="Invalid agent token")
     
     if payload.agent_id != str(agent.id) and payload.agent_id != agent.name and payload.agent_id != agent.server_name:
         raise HTTPException(status_code=400, detail="Agent ID mismatch in payload")

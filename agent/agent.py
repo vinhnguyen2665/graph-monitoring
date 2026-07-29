@@ -191,8 +191,8 @@ def register_agent(config, config_file):
         resp.raise_for_status()
         data = resp.json()
 
-        config['agent_id'] = str(data['agent_id'])
-        config['agent_token'] = data['agent_token']
+        config['agent_id'] = str(data['agent_id']).strip()
+        config['agent_token'] = str(data['agent_token']).strip()
         if 'server_name' not in config:
             config['server_name'] = server_name
 
