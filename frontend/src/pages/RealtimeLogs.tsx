@@ -64,8 +64,8 @@ export const RealtimeLogs: React.FC = () => {
   const columns = [
     { title: t('time'), dataIndex: 'ts', key: 'ts', width: 200 },
     { title: t('clientIp'), dataIndex: 'real_ip', key: 'real_ip' },
+    { title: t('host'), dataIndex: 'host', key: 'host' },
     { title: t('method'), dataIndex: 'method', key: 'method', width: 100 },
-    { title: t('address'), dataIndex: 'server_name', key: 'server_name' },
     { title: t('uri'), dataIndex: 'uri', key: 'uri', ellipsis: true },
     { 
       title: t('status'), 

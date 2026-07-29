@@ -1,5 +1,5 @@
-agent_id: "agent-001"
-agent_token: "change-me"
+# Optional: agent_id & agent_token will be automatically populated on first run via auto-registration
+server_name: "nginx-prod-01"
 server_url: "http://localhost:8000"
 log_path: 
   - "/var/log/nginx/access_json.log"

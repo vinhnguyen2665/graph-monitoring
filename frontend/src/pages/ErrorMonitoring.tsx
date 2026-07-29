@@ -36,9 +36,8 @@ export const ErrorMonitoring: React.FC = () => {
 
   const columns = [
     { title: t('time'), dataIndex: 'ts', key: 'ts' },
-    { title: t('address'), dataIndex: 'server_name', key: 'server_name' },
     { title: t('clientIp'), dataIndex: 'real_ip', key: 'real_ip' },
-    { title: 'Host', dataIndex: 'host', key: 'host' },
+    { title: t('host'), dataIndex: 'host', key: 'host' },
     { title: t('method'), dataIndex: 'method', key: 'method' },
     { title: t('uri'), dataIndex: 'uri', key: 'uri', ellipsis: true },
     { 
