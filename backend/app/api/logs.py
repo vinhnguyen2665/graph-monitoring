@@ -76,7 +76,12 @@ async def get_logs(
         columns = result.column_names
         rows = result.result_rows
         
-        formatted_rows = [dict(zip(columns, row)) for row in rows]
+        formatted_rows = []
+        for row in rows:
+            row_dict = dict(zip(columns, row))
+            if isinstance(row_dict.get('ts'), datetime):
+                row_dict['ts'] = row_dict['ts'].isoformat()
+            formatted_rows.append(row_dict)
         
         return {
             "data": formatted_rows,
@@ -121,8 +126,16 @@ async def get_errors(
         res = client.query(query, parameters=params)
         count_res = client.query(count_query, parameters=params)
         total = count_res.result_rows[0][0] if count_res.result_rows else 0
+
+        formatted_data = []
+        for r in res.result_rows:
+            row_dict = dict(zip(res.column_names, r))
+            if isinstance(row_dict.get('ts'), datetime):
+                row_dict['ts'] = row_dict['ts'].isoformat()
+            formatted_data.append(row_dict)
+
         return {
-            "data": [dict(zip(res.column_names, r)) for r in res.result_rows],
+            "data": formatted_data,
             "total": total
         }
     except Exception as e:
@@ -161,8 +174,16 @@ async def get_slow_requests(
         res = client.query(query, parameters=params)
         count_res = client.query(count_query, parameters=params)
         total = count_res.result_rows[0][0] if count_res.result_rows else 0
+
+        formatted_data = []
+        for r in res.result_rows:
+            row_dict = dict(zip(res.column_names, r))
+            if isinstance(row_dict.get('ts'), datetime):
+                row_dict['ts'] = row_dict['ts'].isoformat()
+            formatted_data.append(row_dict)
+
         return {
-            "data": [dict(zip(res.column_names, r)) for r in res.result_rows],
+            "data": formatted_data,
             "total": total
         }
     except Exception as e:

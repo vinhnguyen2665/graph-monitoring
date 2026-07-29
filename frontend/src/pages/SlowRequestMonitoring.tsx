@@ -25,8 +25,8 @@ export const SlowRequestMonitoring: React.FC = () => {
       const limit = size;
       const offset = (page - 1) * size;
       const { data } = await api.get('/logs/slow-requests', { params: { limit, offset } });
-      setSlowLogs(data.data);
-      setTotal(data.total || 0);
+      setSlowLogs(data?.data || []);
+      setTotal(data?.total || 0);
     } catch (e) {
       message.error("Failed to load slow requests");
     } finally {

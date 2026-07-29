@@ -25,9 +25,9 @@ export const Overview: React.FC = () => {
         api.get('/dashboard/request-timeseries'),
         api.get('/dashboard/status-timeseries')
       ]);
-      setStats(overviewRes.data);
-      setRequestTimeseries(reqRes.data);
-      setStatusTimeseries(statusRes.data);
+      setStats(overviewRes?.data || {});
+      setRequestTimeseries(Array.isArray(reqRes?.data) ? reqRes.data : []);
+      setStatusTimeseries(Array.isArray(statusRes?.data) ? statusRes.data : []);
     } catch (e) {
       console.error(e);
     }

@@ -25,8 +25,8 @@ export const ErrorMonitoring: React.FC = () => {
       const limit = size;
       const offset = (page - 1) * size;
       const { data } = await api.get('/logs/errors', { params: { limit, offset } });
-      setErrorLogs(data.data);
-      setTotal(data.total || 0);
+      setErrorLogs(data?.data || []);
+      setTotal(data?.total || 0);
     } catch (e) {
       message.error("Failed to load errors");
     } finally {

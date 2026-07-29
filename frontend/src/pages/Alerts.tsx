@@ -27,8 +27,8 @@ export const Alerts: React.FC = () => {
         api.get('/alerts/rules'),
         api.get('/alerts/events')
       ]);
-      setRules(rulesRes.data);
-      setEvents(eventsRes.data);
+      setRules(Array.isArray(rulesRes?.data) ? rulesRes.data : []);
+      setEvents(Array.isArray(eventsRes?.data) ? eventsRes.data : []);
     } catch (e) {
       message.error(t('errResolve'));
     } finally {
