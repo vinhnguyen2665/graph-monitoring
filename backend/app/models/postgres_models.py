@@ -20,7 +20,7 @@ class User(Base):
 class Agent(Base):
     __tablename__ = "agents"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     name = Column(String, nullable=False)
     server_name = Column(String, nullable=False, index=True)
     hostname = Column(String)

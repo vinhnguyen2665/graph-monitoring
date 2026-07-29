@@ -78,7 +78,7 @@ async def auto_register_agent(
         status_msg = "registered"
 
     return AgentRegisterResponse(
-        agent_id=agent.id,
+        agent_id=str(agent.id),
         agent_token=token,
         server_name=agent.server_name,
         status=status_msg
@@ -126,7 +126,7 @@ async def read_agents(
 
 @router.get("/{agent_id}", response_model=AgentResponse)
 async def read_agent(
-    agent_id: UUID,
+    agent_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(deps.get_current_user),
 ) -> Any:
@@ -139,7 +139,7 @@ async def read_agent(
 
 @router.put("/{agent_id}", response_model=AgentResponse)
 async def update_agent(
-    agent_id: UUID,
+    agent_id: str,
     agent_in: AgentUpdate,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(deps.get_current_active_superuser),
@@ -160,7 +160,7 @@ async def update_agent(
 
 @router.delete("/{agent_id}")
 async def delete_agent(
-    agent_id: UUID,
+    agent_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(deps.get_current_active_superuser),
 ) -> Any:
@@ -176,7 +176,7 @@ async def delete_agent(
 
 @router.post("/{agent_id}/rotate-token")
 async def rotate_agent_token(
-    agent_id: UUID,
+    agent_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(deps.get_current_active_superuser),
 ) -> Any:

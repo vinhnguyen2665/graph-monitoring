@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Union
 from pydantic import BaseModel, ConfigDict
 from datetime import datetime
 from uuid import UUID
@@ -23,7 +23,7 @@ class AgentRegisterRequest(BaseModel):
     fingerprint: str
 
 class AgentRegisterResponse(BaseModel):
-    agent_id: UUID
+    agent_id: Union[UUID, str]
     agent_token: str
     server_name: str
     status: str
@@ -39,7 +39,7 @@ class AgentUpdate(BaseModel):
 class AgentInDB(AgentBase):
     model_config = ConfigDict(from_attributes=True)
 
-    id: UUID
+    id: Union[UUID, str]
     status: str
     last_seen_at: Optional[datetime] = None
     created_at: datetime

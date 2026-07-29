@@ -47,12 +47,20 @@ async def ingest_nginx(
     # Validate agent
     agent = None
     try:
-        agent_uuid = UUID(x_agent_id)
-        stmt = select(Agent).where(Agent.id == agent_uuid)
+        stmt = select(Agent).where(Agent.id == x_agent_id)
         result = await db.execute(stmt)
         agent = result.scalars().first()
     except Exception:
         pass
+
+    if not agent:
+        try:
+            agent_uuid = UUID(x_agent_id)
+            stmt = select(Agent).where(Agent.id == agent_uuid)
+            result = await db.execute(stmt)
+            agent = result.scalars().first()
+        except Exception:
+            pass
 
     if not agent:
         stmt = select(Agent).where((Agent.name == x_agent_id) | (Agent.server_name == x_agent_id))
