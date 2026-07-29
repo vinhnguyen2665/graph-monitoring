@@ -9,6 +9,8 @@ from app.models.postgres_models import User
 
 router = APIRouter()
 
+import math
+
 @router.get("/overview")
 async def get_overview(
     from_time: Optional[datetime] = None,
@@ -23,11 +25,11 @@ async def get_overview(
     query = f"""
         SELECT 
             count() as total_requests,
-            sum(is_error) as total_errors,
-            sum(is_slow) as total_slow,
-            avg(request_time) as avg_latency,
-            quantile(0.95)(request_time) as p95_latency,
-            sum(body_bytes) as total_bytes
+            ifNull(sum(is_error), 0) as total_errors,
+            ifNull(sum(is_slow), 0) as total_slow,
+            nanToZero(avg(request_time)) as avg_latency,
+            nanToZero(quantile(0.95)(request_time)) as p95_latency,
+            ifNull(sum(body_bytes), 0) as total_bytes
         FROM {settings.CLICKHOUSE_DB}.nginx_access_logs
         WHERE ts >= %(from_time)s AND ts <= %(to_time)s
     """
@@ -43,9 +45,19 @@ async def get_overview(
         rows = result.result_rows
         
         if not rows:
-            return {}
+            return {
+                "total_requests": 0, "total_errors": 0, "total_slow": 0,
+                "avg_latency": 0.0, "p95_latency": 0.0, "total_bytes": 0
+            }
             
-        return dict(zip(columns, rows[0]))
+        raw_dict = dict(zip(columns, rows[0]))
+        cleaned_dict = {}
+        for k, v in raw_dict.items():
+            if v is None or (isinstance(v, float) and (math.isnan(v) or math.isinf(v))):
+                cleaned_dict[k] = 0
+            else:
+                cleaned_dict[k] = v
+        return cleaned_dict
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Query failed: {str(e)}")
 
