@@ -48,6 +48,11 @@ def save_offsets(offset_file, offsets):
         logging.error(f"Failed to save offsets to {offset_file}: {e}")
 
 
+def is_binary_or_compressed(filename):
+    lower = filename.lower()
+    return lower.endswith(('.gz', '.zip', '.tar', '.bz2', '.7z', '.rar', '.xz'))
+
+
 def find_files(patterns):
     if not isinstance(patterns, list):
         patterns = [patterns]
@@ -58,7 +63,7 @@ def find_files(patterns):
         glob_matches = glob.glob(pattern)
         if glob_matches:
             for f in glob_matches:
-                if os.path.isfile(f):
+                if os.path.isfile(f) and not is_binary_or_compressed(f):
                     matched_files.add(os.path.abspath(f))
             continue
             
@@ -75,13 +80,13 @@ def find_files(patterns):
                 regex = re.compile(file_pattern)
                 for entry in os.listdir(dir_name):
                     full_path = os.path.join(dir_name, entry)
-                    if os.path.isfile(full_path) and regex.search(entry):
+                    if os.path.isfile(full_path) and not is_binary_or_compressed(full_path) and regex.search(entry):
                         matched_files.add(os.path.abspath(full_path))
             except re.error as e:
                 logging.error(f"Invalid regex pattern {file_pattern}: {e}")
                 
         # 3. Direct check
-        if os.path.isfile(pattern):
+        if os.path.isfile(pattern) and not is_binary_or_compressed(pattern):
             matched_files.add(os.path.abspath(pattern))
             
     return sorted(list(matched_files))
@@ -104,7 +109,7 @@ def update_tracked_files(patterns, open_files, file_offsets):
     for path in current_files:
         if path not in open_files:
             try:
-                f = open(path, 'r')
+                f = open(path, 'r', encoding='utf-8', errors='replace')
                 offset = file_offsets.get(path, 0)
                 try:
                     size = os.path.getsize(path)
@@ -286,7 +291,15 @@ def run(config):
             for path, f in list(open_files.items()):
                 while len(batch) < batch_size:
                     current_pos = f.tell()
-                    line = f.readline()
+                    try:
+                        line = f.readline()
+                    except UnicodeDecodeError as e:
+                        logging.warning(f"Unicode decode error in {path} at offset {current_pos}: {e}. Skipping invalid line.")
+                        file_offsets[path] = f.tell()
+                        continue
+                    except Exception as e:
+                        logging.error(f"Error reading file {path} at offset {current_pos}: {e}")
+                        break
                     if not line:
                         # Handle log rotation
                         try:
