@@ -42,14 +42,24 @@ async def ingest_nginx(
         raise HTTPException(status_code=401, detail="Missing agent credentials")
 
     # Validate agent
-    stmt = select(Agent).where(Agent.id == x_agent_id)
-    result = await db.execute(stmt)
-    agent = result.scalars().first()
-    
+    agent = None
+    try:
+        agent_uuid = UUID(x_agent_id)
+        stmt = select(Agent).where(Agent.id == agent_uuid)
+        result = await db.execute(stmt)
+        agent = result.scalars().first()
+    except Exception:
+        pass
+
+    if not agent:
+        stmt = select(Agent).where((Agent.name == x_agent_id) | (Agent.server_name == x_agent_id))
+        result = await db.execute(stmt)
+        agent = result.scalars().first()
+
     if not agent or not security.verify_password(x_agent_token, agent.token_hash):
         raise HTTPException(status_code=401, detail="Invalid agent credentials")
     
-    if payload.agent_id != str(agent.id) and payload.agent_id != agent.name:
+    if payload.agent_id != str(agent.id) and payload.agent_id != agent.name and payload.agent_id != agent.server_name:
         raise HTTPException(status_code=400, detail="Agent ID mismatch in payload")
 
     # Update agent last seen
@@ -69,11 +79,16 @@ async def ingest_nginx(
 
     for entry in payload.logs:
         try:
-            # Parse time
+            # Parse time and convert to UTC
             try:
                 ts = datetime.fromisoformat(entry.time.replace("Z", "+00:00"))
             except ValueError:
                 ts = now
+
+            if ts.tzinfo is not None:
+                ts = ts.astimezone(timezone.utc)
+
+            ts_naive = ts.replace(tzinfo=None)
 
             status_code = parse_int(entry.status)
             body_bytes = parse_int(entry.body_bytes)
@@ -100,7 +115,7 @@ async def ingest_nginx(
             is_slow = 1 if request_time >= settings.SLOW_REQUEST_THRESHOLD_SECONDS else 0
 
             row = [
-                ts.replace(tzinfo=None), # ClickHouse client converts natively
+                ts_naive, # ClickHouse client converts natively to UTC DateTime64
                 str(agent.id),
                 agent.server_name,
                 entry.real_ip or "",
