@@ -30,26 +30,27 @@ This project consists of 3 major independent subsystems:
 
 ---
 
-## ⚡ Infrastructure Setup (Databases)
+## ⚡ Infrastructure & Application Setup (Docker Compose)
 
-All backing stores (PostgreSQL, ClickHouse, Redis) are packaged into a centralized Docker Compose environment in the root directory for easy local development.
+The Docker Compose setup handles ClickHouse, Redis, Backend, and Frontend. PostgreSQL runs on an external server and is configured via environment variables.
 
 ### 1. Configure Environment Variables
-Copy `.env.example` to `.env` in the root directory, backend directory, and configure your credentials:
+Copy `.env.example` to `.env` in the root directory, and configure `POSTGRES_SERVER`, `POSTGRES_PORT`, and credentials:
 ```bash
 cp .env.example .env
-cp .env.example backend/.env
 ```
 
-### 2. Launch Databases
-Start all databases in detached mode:
+### 2. Build and Launch All Services
+Start ClickHouse, Redis, Backend, and Frontend in detached mode:
 ```bash
-docker compose up -d
+docker compose up -d --build
 ```
 This spins up:
-* **PostgreSQL** (`localhost:5432`): Stores users, registered agents, alert rules, and topology metadata.
 * **ClickHouse** (`localhost:8123` HTTP / `9000` Native): Stores massive volumes of structured Nginx access logs for sub-millisecond analytics.
 * **Redis** (`localhost:6379`): Serves as a Pub/Sub message broker for pushing real-time log lines to connected frontend clients.
+* **Backend** (`localhost:8000`): FastAPI server handling REST APIs, WebSockets, DB migrations & log ingestion. Connects to external PostgreSQL (`POSTGRES_SERVER`).
+* **Frontend** (`localhost:3000`): React + Vite Dashboard management console.
+
 
 If you ever need to reset databases and start fresh:
 ```bash

@@ -12,17 +12,19 @@ class Settings(BaseSettings):
 
     # PostgreSQL
     POSTGRES_SERVER: str = "localhost"
+    POSTGRES_PORT: int = 5432
     POSTGRES_USER: str = "postgres"
     POSTGRES_PASSWORD: str = "postgres"
     POSTGRES_DB: str = "net_monitoring"
 
     @property
     def SQLALCHEMY_DATABASE_URI(self) -> str:
-        return f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_SERVER}/{self.POSTGRES_DB}"
+        return f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
 
     @property
     def SQLALCHEMY_SYNC_DATABASE_URI(self) -> str:
-        return f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_SERVER}/{self.POSTGRES_DB}"
+        return f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+
 
     # ClickHouse
     CLICKHOUSE_HOST: str = "localhost"
@@ -40,7 +42,7 @@ class Settings(BaseSettings):
     TOPOLOGY_LOG_WINDOW_SECONDS: int = 30
 
     model_config = SettingsConfigDict(
-        env_file=('.env', '../.env', '../../.env', 'backend/.env'),
+        env_file=('../.env', '.env', '../../.env'),
         extra='ignore'
     )
 

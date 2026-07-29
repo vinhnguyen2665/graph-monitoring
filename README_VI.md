@@ -30,26 +30,27 @@ Dự án này gồm 3 phân hệ hoàn toàn độc lập:
 
 ---
 
-## ⚡ Cài Đặt Hạ Tầng Dữ Liệu (Databases)
+## ⚡ Cài Đặt Hạ Tầng & Ứng Dụng (Docker Compose)
 
-Toàn bộ cơ sở dữ liệu (PostgreSQL, ClickHouse, Redis) được đóng gói trong một file Docker Compose ở thư mục gốc để thuận tiện cho việc phát triển cục bộ.
+Docker Compose quản lý các dịch vụ ClickHouse, Redis, Backend và Frontend. Cơ sở dữ liệu PostgreSQL chạy trên máy chủ khác (bên ngoài) và được cấu hình thông qua biến môi trường.
 
 ### 1. Cấu hình biến môi trường
-Sao chép file `.env.example` thành `.env` ở thư mục gốc và thư mục backend, sau đó tùy chỉnh mật khẩu:
+Sao chép file `.env.example` thành `.env` duy nhất ở thư mục gốc, sau đó tùy chỉnh địa chỉ IP/host của PostgreSQL (`POSTGRES_SERVER`), `POSTGRES_PORT` và thông tin đăng nhập:
 ```bash
 cp .env.example .env
-cp .env.example backend/.env
 ```
 
-### 2. Khởi động các Database
-Chạy tất cả các dịch vụ DB ở chế độ nền (detached):
+### 2. Khởi động Toàn bộ Ứng Dụng
+Build và chạy tất cả các dịch vụ ở chế độ nền (detached):
 ```bash
-docker compose up -d
+docker compose up -d --build
 ```
 Lệnh này sẽ khởi động:
-* **PostgreSQL** (`localhost:5432`): Lưu trữ người dùng, agent đã đăng ký, luật cảnh báo và metadata của bản đồ topology.
 * **ClickHouse** (`localhost:8123` HTTP / `9000` Native): Lưu trữ lượng lớn dữ liệu log truy cập Nginx phục vụ truy vấn phân tích tốc độ mili-giây.
 * **Redis** (`localhost:6379`): Đóng vai trò là Pub/Sub broker để đẩy các sự kiện log thời gian thực lên giao diện Frontend.
+* **Backend** (`localhost:8000`): FastAPI server xử lý REST API, WebSocket và ingest log. Kết nối đến PostgreSQL ngoài (`POSTGRES_SERVER`).
+* **Frontend** (`localhost:3000`): Giao diện React + Vite Dashboard.
+
 
 Nếu anh muốn xóa sạch dữ liệu và khởi động lại từ đầu:
 ```bash

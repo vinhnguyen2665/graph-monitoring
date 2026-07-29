@@ -20,8 +20,18 @@ export const RealtimeLogs: React.FC = () => {
     };
   }, []);
 
+  const getWsUrl = () => {
+    if (import.meta.env.VITE_WS_URL) {
+      return import.meta.env.VITE_WS_URL;
+    }
+    const hostname = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
+    const protocol = typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${protocol}//${hostname}:8000/api/ws/realtime`;
+  };
+
   const connectWebSocket = () => {
-    ws.current = new WebSocket('ws://localhost:8000/api/ws/realtime');
+    ws.current = new WebSocket(getWsUrl());
+
     
     ws.current.onmessage = (event) => {
       if (isPaused) return;

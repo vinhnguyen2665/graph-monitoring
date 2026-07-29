@@ -1,9 +1,18 @@
 import axios from 'axios';
 import { useAuthStore } from '../store/authStore';
 
+const getBaseUrl = () => {
+  if (import.meta.env.VITE_API_BASE_URL) {
+    return import.meta.env.VITE_API_BASE_URL;
+  }
+  const hostname = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
+  return `http://${hostname}:8000/api`;
+};
+
 export const api = axios.create({
-  baseURL: 'http://localhost:8000/api',
+  baseURL: getBaseUrl(),
 });
+
 
 // Add a request interceptor
 api.interceptors.request.use(
