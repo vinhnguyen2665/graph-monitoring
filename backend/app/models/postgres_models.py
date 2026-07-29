@@ -26,6 +26,7 @@ class Agent(Base):
     hostname = Column(String)
     ip_address = Column(String)
     log_path = Column(String)
+    fingerprint = Column(String, index=True, nullable=True)
     token_hash = Column(String, nullable=False)
     status = Column(String, default="offline")
     last_seen_at = Column(DateTime, nullable=True)

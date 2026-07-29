@@ -1,10 +1,14 @@
 import datetime
 import glob
+import hashlib
 import json
 import logging
 import os
+import platform
 import re
+import socket
 import time
+import uuid
 
 import click
 import requests
@@ -126,21 +130,108 @@ def fix_json_string(line):
     return line
 
 
-def send_batch(config, batch):
+def get_system_fingerprint():
+    """Generates a stable hardware/system fingerprint based on MAC address, hostname, and OS platform."""
+    mac = uuid.getnode()
+    host = socket.gethostname()
+    plat = platform.platform()
+    raw = f"{mac}-{host}-{plat}".encode('utf-8')
+    return hashlib.sha256(raw).hexdigest()
+
+
+def save_config(config_file, config_data):
+    """Saves updated configuration back to the YAML file."""
+    try:
+        with open(config_file, 'w') as f:
+            yaml.dump(config_data, f, default_flow_style=False, sort_keys=False)
+        logging.info(f"Updated configuration saved to {config_file}")
+    except Exception as e:
+        logging.error(f"Failed to save config to {config_file}: {e}")
+
+
+def register_agent(config, config_file):
+    """Auto-registers the agent with the backend using system fingerprint."""
+    server_url = config.get('server_url', 'http://localhost:8000').rstrip('/')
+    url = f"{server_url}/api/agents/register"
+
+    hostname = socket.gethostname()
+    server_name = config.get('server_name') or hostname
+    fingerprint = get_system_fingerprint()
+
+    # Determine local IP address if possible
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip_address = s.getsockname()[0]
+        s.close()
+    except Exception:
+        ip_address = "127.0.0.1"
+
+    log_paths = config.get('log_path', [])
+    log_path_str = ", ".join(log_paths) if isinstance(log_paths, list) else str(log_paths)
+
+    payload = {
+        "server_name": server_name,
+        "name": f"Agent-{hostname}",
+        "hostname": hostname,
+        "ip_address": ip_address,
+        "log_path": log_path_str,
+        "fingerprint": fingerprint
+    }
+
+    logging.info(f"Auto-registering agent with server {url} (Fingerprint: {fingerprint[:8]}...)...")
+
+    try:
+        resp = requests.post(url, json=payload, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+
+        config['agent_id'] = str(data['agent_id'])
+        config['agent_token'] = data['agent_token']
+        if 'server_name' not in config:
+            config['server_name'] = server_name
+
+        save_config(config_file, config)
+        logging.info(f"Agent registration successful ({data.get('status')})! Agent ID: {data['agent_id']}")
+        return True
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Agent registration failed: {e}")
+        if hasattr(e, 'response') and e.response is not None:
+            logging.error(f"Server response: {e.response.text}")
+        return False
+
+
+def ensure_agent_credentials(config, config_file):
+    """Ensures agent has valid credentials; auto-registers if missing."""
+    if not config.get('agent_id') or not config.get('agent_token'):
+        logging.info("Agent credentials missing in config. Triggering auto-registration...")
+        if not register_agent(config, config_file):
+            raise RuntimeError("Auto-registration failed. Cannot proceed without valid agent credentials.")
+
+
+def send_batch(config, config_file, batch):
     url = f"{config['server_url'].rstrip('/')}/api/ingest/nginx"
     headers = {
-        "X-Agent-Id": config['agent_id'],
-        "X-Agent-Token": config['agent_token'],
+        "X-Agent-Id": str(config.get('agent_id', '')),
+        "X-Agent-Token": str(config.get('agent_token', '')),
         "Content-Type": "application/json"
     }
     payload = {
-        "agent_id": config['agent_id'],
+        "agent_id": str(config.get('agent_id', '')),
         "server_time": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "logs": batch
     }
 
     try:
         resp = requests.post(url, headers=headers, json=payload, timeout=10)
+        if resp.status_code == 401:
+            logging.warning("Received 401 Unauthorized from backend. Re-registering agent...")
+            if register_agent(config, config_file):
+                headers["X-Agent-Id"] = str(config['agent_id'])
+                headers["X-Agent-Token"] = str(config['agent_token'])
+                payload["agent_id"] = str(config['agent_id'])
+                resp = requests.post(url, headers=headers, json=payload, timeout=10)
+
         resp.raise_for_status()
         logging.info(f"Successfully sent batch of {len(batch)} logs. Response: {resp.json()}")
         return True
@@ -163,6 +254,7 @@ def run(config):
     """Run the agent to tail logs"""
     cfg = load_config(config)
     setup_logging(cfg.get('debug', False))
+    ensure_agent_credentials(cfg, config)
 
     log_path = cfg['log_path']
     offset_file = cfg.get('offset_file', 'agent.offset')
@@ -219,7 +311,7 @@ def run(config):
                         file_offsets[path] = f.tell()
 
                     if len(batch) >= batch_size:
-                        if send_batch(cfg, batch):
+                        if send_batch(cfg, config, batch):
                             save_offsets(offset_file, file_offsets)
                             batch = []
                             last_flush = time.time()
@@ -230,7 +322,7 @@ def run(config):
             if not any_lines_read:
                 # Time to flush?
                 if batch and (time.time() - last_flush) >= flush_interval:
-                    if send_batch(cfg, batch):
+                    if send_batch(cfg, config, batch):
                         save_offsets(offset_file, file_offsets)
                         batch = []
                         last_flush = time.time()

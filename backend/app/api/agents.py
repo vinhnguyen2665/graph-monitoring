@@ -8,13 +8,81 @@ from uuid import UUID
 from app.core import security
 from app.db.postgres import get_db
 from app.models.postgres_models import Agent, User
-from app.schemas.agent import AgentCreate, AgentUpdate, AgentResponse, AgentCreateResponse
+from app.schemas.agent import (
+    AgentCreate, AgentUpdate, AgentResponse, AgentCreateResponse,
+    AgentRegisterRequest, AgentRegisterResponse
+)
 from app.api import deps
 
 router = APIRouter()
 
 def generate_agent_token() -> str:
     return secrets.token_urlsafe(32)
+
+@router.post("/register", response_model=AgentRegisterResponse)
+async def auto_register_agent(
+    *,
+    db: AsyncSession = Depends(get_db),
+    agent_in: AgentRegisterRequest,
+) -> Any:
+    """
+    Auto-register an agent connecting for the first time or re-registering via fingerprint.
+    Does not require admin JWT token so agents can onboard dynamically.
+    """
+    # 1. First check by fingerprint
+    stmt = select(Agent).where(Agent.fingerprint == agent_in.fingerprint)
+    result = await db.execute(stmt)
+    agent = result.scalars().first()
+
+    # 2. Fallback check by server_name if fingerprint didn't match
+    if not agent:
+        stmt = select(Agent).where(Agent.server_name == agent_in.server_name)
+        result = await db.execute(stmt)
+        agent = result.scalars().first()
+
+    token = generate_agent_token()
+    token_hash = security.get_password_hash(token)
+
+    if agent:
+        # Re-register existing agent: update details and issue new token
+        agent.server_name = agent_in.server_name
+        if agent_in.name:
+            agent.name = agent_in.name
+        if agent_in.hostname:
+            agent.hostname = agent_in.hostname
+        if agent_in.ip_address:
+            agent.ip_address = agent_in.ip_address
+        if agent_in.log_path:
+            agent.log_path = agent_in.log_path
+        agent.fingerprint = agent_in.fingerprint
+        agent.token_hash = token_hash
+        agent.status = "online"
+        await db.commit()
+        await db.refresh(agent)
+        status_msg = "re-registered"
+    else:
+        # Create brand new agent
+        agent = Agent(
+            name=agent_in.name or agent_in.server_name,
+            server_name=agent_in.server_name,
+            hostname=agent_in.hostname,
+            ip_address=agent_in.ip_address,
+            log_path=agent_in.log_path,
+            fingerprint=agent_in.fingerprint,
+            token_hash=token_hash,
+            status="online"
+        )
+        db.add(agent)
+        await db.commit()
+        await db.refresh(agent)
+        status_msg = "registered"
+
+    return AgentRegisterResponse(
+        agent_id=agent.id,
+        agent_token=token,
+        server_name=agent.server_name,
+        status=status_msg
+    )
 
 @router.post("", response_model=AgentCreateResponse)
 async def create_agent(
