@@ -1,6 +1,8 @@
 import json
 from datetime import datetime, timezone
 from typing import Any
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException, Header, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -41,7 +43,7 @@ async def ingest_nginx(
     if not x_agent_id or not x_agent_token:
         raise HTTPException(status_code=401, detail="Missing agent credentials")
 
-    x_agent_id = str(x_agent_id).strip()
+    x_agent_id = UUID(str(x_agent_id).strip())
     x_agent_token = str(x_agent_token).strip()
 
     # Validate agent
@@ -55,7 +57,7 @@ async def ingest_nginx(
 
     if not agent:
         try:
-            agent_uuid = UUID(x_agent_id)
+            agent_uuid = x_agent_id
             stmt = select(Agent).where(Agent.id == agent_uuid)
             result = await db.execute(stmt)
             agent = result.scalars().first()
@@ -68,7 +70,7 @@ async def ingest_nginx(
         agent = result.scalars().first()
 
     if not agent:
-        raise HTTPException(status_code=401, detail=f"Agent '{x_agent_id}' not found in database")
+        raise HTTPException(status_code=401, detail=f"Agent '{str(x_agent_id)}' not found in database")
 
     if not security.verify_password(x_agent_token, agent.token_hash):
         raise HTTPException(status_code=401, detail="Invalid agent token")
