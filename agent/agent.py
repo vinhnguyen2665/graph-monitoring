@@ -154,14 +154,12 @@ def save_config(config_file, config_data):
         logging.error(f"Failed to save config to {config_file}: {e}")
 
 
-def register_agent(config, config_file):
+def register_agent(config, config_file, session=None):
     """Auto-registers the agent with the backend using system fingerprint."""
-    server_url = config.get('server_url', 'http://localhost:8000').rstrip('/')
-    url = f"{server_url}/api/agents/register"
-
-    hostname = socket.gethostname()
-    server_name = config.get('server_name') or hostname
+    url = f"{config['server_url'].rstrip('/')}/api/agents/register"
     fingerprint = get_system_fingerprint()
+    hostname = socket.gethostname()
+    server_name = config.get('server_name', f"Agent-{hostname}")
 
     # Determine local IP address if possible
     try:
@@ -186,8 +184,9 @@ def register_agent(config, config_file):
 
     logging.info(f"Auto-registering agent with server {url} (Fingerprint: {fingerprint[:8]}...)...")
 
+    http_client = session or requests
     try:
-        resp = requests.post(url, json=payload, timeout=10)
+        resp = http_client.post(url, json=payload, timeout=10)
         resp.raise_for_status()
         data = resp.json()
 
@@ -206,15 +205,15 @@ def register_agent(config, config_file):
         return False
 
 
-def ensure_agent_credentials(config, config_file):
+def ensure_agent_credentials(config, config_file, session=None):
     """Ensures agent has valid credentials; auto-registers if missing."""
     if not config.get('agent_id') or not config.get('agent_token'):
         logging.info("Agent credentials missing in config. Triggering auto-registration...")
-        if not register_agent(config, config_file):
+        if not register_agent(config, config_file, session=session):
             raise RuntimeError("Auto-registration failed. Cannot proceed without valid agent credentials.")
 
 
-def send_batch(config, config_file, batch):
+def send_batch(config, config_file, batch, session=None):
     url = f"{config['server_url'].rstrip('/')}/api/ingest/nginx"
     headers = {
         "X-Agent-Id": str(config.get('agent_id', '')),
@@ -227,18 +226,19 @@ def send_batch(config, config_file, batch):
         "logs": batch
     }
 
+    http_client = session or requests
     try:
-        resp = requests.post(url, headers=headers, json=payload, timeout=10)
+        resp = http_client.post(url, headers=headers, json=payload, timeout=10)
         if resp.status_code == 401:
             logging.warning("Received 401 Unauthorized from backend. Re-registering agent...")
-            if register_agent(config, config_file):
+            if register_agent(config, config_file, session=session):
                 headers["X-Agent-Id"] = str(config['agent_id'])
                 headers["X-Agent-Token"] = str(config['agent_token'])
                 payload["agent_id"] = str(config['agent_id'])
-                resp = requests.post(url, headers=headers, json=payload, timeout=10)
+                resp = http_client.post(url, headers=headers, json=payload, timeout=10)
 
         resp.raise_for_status()
-        logging.info(f"Successfully sent batch of {len(batch)} logs. Response: {resp.json()}")
+        logging.info(f"Successfully sent batch of {len(batch)} logs.")
         return True
     except requests.exceptions.RequestException as e:
         logging.error(f"Failed to send batch: {e}")
@@ -259,11 +259,13 @@ def run(config):
     """Run the agent to tail logs"""
     cfg = load_config(config)
     setup_logging(cfg.get('debug', False))
-    ensure_agent_credentials(cfg, config)
+
+    session = requests.Session()
+    ensure_agent_credentials(cfg, config, session=session)
 
     log_path = cfg['log_path']
     offset_file = cfg.get('offset_file', 'agent.offset')
-    batch_size = cfg.get('batch_size', 100)
+    batch_size = cfg.get('batch_size', 500)
     flush_interval = cfg.get('flush_interval_seconds', 3)
 
     file_offsets = load_offsets(offset_file)
@@ -273,10 +275,11 @@ def run(config):
     if not open_files:
         logging.warning(f"No log files found matching pattern(s): {log_path}")
 
-    logging.info(f"Starting agent. Tailing matching files from log_path: {log_path}")
+    logging.info(f"Starting agent. Tailing matching files from log_path: {log_path} (batch_size={batch_size})")
 
     batch = []
     last_flush = time.time()
+    last_offset_save = time.time()
     last_file_scan = time.time()
     scan_interval = 10.0  # seconds
 
@@ -324,8 +327,10 @@ def run(config):
                         file_offsets[path] = f.tell()
 
                     if len(batch) >= batch_size:
-                        if send_batch(cfg, config, batch):
-                            save_offsets(offset_file, file_offsets)
+                        if send_batch(cfg, config, batch, session=session):
+                            if time.time() - last_offset_save >= 1.0:
+                                save_offsets(offset_file, file_offsets)
+                                last_offset_save = time.time()
                             batch = []
                             last_flush = time.time()
                         else:
@@ -335,13 +340,16 @@ def run(config):
             if not any_lines_read:
                 # Time to flush?
                 if batch and (time.time() - last_flush) >= flush_interval:
-                    if send_batch(cfg, config, batch):
-                        save_offsets(offset_file, file_offsets)
+                    if send_batch(cfg, config, batch, session=session):
+                        if time.time() - last_offset_save >= 1.0:
+                            save_offsets(offset_file, file_offsets)
+                            last_offset_save = time.time()
                         batch = []
                         last_flush = time.time()
                 time.sleep(0.5)
 
     finally:
+        save_offsets(offset_file, file_offsets)
         for path, f in open_files.items():
             try:
                 f.close()

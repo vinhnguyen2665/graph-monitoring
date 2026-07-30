@@ -8,3 +8,5 @@ batch_size: 5
 flush_interval_seconds: 2
 offset_file: "/home/vinhn/0_PROJECTS/NginxMonitoringDashboard/agent/agent.offset"
 debug: true
+batch_size: 500          # Hoặc 1000 nếu dung lượng log cực lớn
+flush_interval_seconds: 1

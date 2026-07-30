@@ -3,7 +3,9 @@ server_name: "nginx-prod-01"
 server_url: "http://localhost:8000"
 log_path: 
   - "/var/log/nginx/access_json.log"
-batch_size: 100
+batch_size: 500
 flush_interval_seconds: 3
 offset_file: "./agent.offset"
 debug: true
+batch_size: 500          # Hoặc 1000 nếu dung lượng log cực lớn
+flush_interval_seconds: 1
