@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Table, Card, Button, Modal, Form, Input, Select, Tag, Tabs, message } from 'antd';
 import { api } from '../api/axios';
 import { useTranslation } from '../i18n/LanguageContext';
+import { formatClientTime } from '../utils/time';
 
 const { TabPane } = Tabs;
 const { Option } = Select;
@@ -86,7 +87,7 @@ export const Alerts: React.FC = () => {
   ];
 
   const eventColumns = [
-    { title: t('time'), dataIndex: 'created_at', key: 'created_at' },
+    { title: t('time'), dataIndex: 'created_at', key: 'created_at', render: (val: string) => formatClientTime(val) },
     { title: t('ruleName'), dataIndex: 'rule_name', key: 'rule_name' },
     { 
       title: t('condition'), 

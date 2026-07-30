@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Table, Card, Tag, Typography, message } from 'antd';
 import { api } from '../api/axios';
 import { useTranslation } from '../i18n/LanguageContext';
+import { formatClientTime } from '../utils/time';
 
 const { Title } = Typography;
 
@@ -9,14 +10,12 @@ export const SlowRequestMonitoring: React.FC = () => {
   const [slowLogs, setSlowLogs] = useState([]);
   const [loading, setLoading] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(15);
+  const [pageSize, setPageSize] = useState(10);
   const [total, setTotal] = useState(0);
   const { t } = useTranslation();
 
   useEffect(() => {
     fetchSlowRequests(currentPage, pageSize);
-    const interval = setInterval(() => fetchSlowRequests(currentPage, pageSize), 5000);
-    return () => clearInterval(interval);
   }, [currentPage, pageSize]);
 
   const fetchSlowRequests = async (page: number, size: number) => {
@@ -35,7 +34,7 @@ export const SlowRequestMonitoring: React.FC = () => {
   };
 
   const columns = [
-    { title: t('time'), dataIndex: 'ts', key: 'ts' },
+    { title: t('time'), dataIndex: 'ts', key: 'ts', render: (val: string) => formatClientTime(val) },
     { title: t('clientIp'), dataIndex: 'real_ip', key: 'real_ip' },
     { title: t('host'), dataIndex: 'host', key: 'host' },
     { title: t('method'), dataIndex: 'method', key: 'method' },

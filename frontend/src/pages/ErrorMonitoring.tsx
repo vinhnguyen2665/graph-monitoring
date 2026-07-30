@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Table, Card, Tag, Typography, message } from 'antd';
 import { api } from '../api/axios';
 import { useTranslation } from '../i18n/LanguageContext';
+import { formatClientTime } from '../utils/time';
 
 const { Title } = Typography;
 
@@ -35,7 +36,7 @@ export const ErrorMonitoring: React.FC = () => {
   };
 
   const columns = [
-    { title: t('time'), dataIndex: 'ts', key: 'ts' },
+    { title: t('time'), dataIndex: 'ts', key: 'ts', render: (val: string) => formatClientTime(val) },
     { title: t('clientIp'), dataIndex: 'real_ip', key: 'real_ip' },
     { title: t('host'), dataIndex: 'host', key: 'host' },
     { title: t('method'), dataIndex: 'method', key: 'method' },

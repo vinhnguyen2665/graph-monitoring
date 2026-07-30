@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { Table, Tag, Card, Button, Space, Typography } from 'antd';
 import { PlayCircleOutlined, PauseCircleOutlined, ClearOutlined } from '@ant-design/icons';
 import { useTranslation } from '../i18n/LanguageContext';
+import { formatClientTime } from '../utils/time';
 
 const { Title } = Typography;
 
@@ -62,7 +63,7 @@ export const RealtimeLogs: React.FC = () => {
   }, [isPaused]);
 
   const columns = [
-    { title: t('time'), dataIndex: 'ts', key: 'ts', width: 200 },
+    { title: t('time'), dataIndex: 'ts', key: 'ts', width: 200, render: (val: string) => formatClientTime(val) },
     { title: t('clientIp'), dataIndex: 'real_ip', key: 'real_ip' },
     { title: t('host'), dataIndex: 'host', key: 'host' },
     { title: t('method'), dataIndex: 'method', key: 'method', width: 100 },

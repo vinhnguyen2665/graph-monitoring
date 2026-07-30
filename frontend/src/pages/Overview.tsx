@@ -3,6 +3,7 @@ import { Card, Row, Col, Statistic, Typography } from 'antd';
 import { api } from '../api/axios';
 import { Area, Column } from '@ant-design/plots';
 import { useTranslation } from '../i18n/LanguageContext';
+import { formatClientTimeShort } from '../utils/time';
 
 const { Title } = Typography;
 
@@ -26,7 +27,11 @@ export const Overview: React.FC = () => {
         api.get('/dashboard/status-timeseries')
       ]);
       setStats(overviewRes?.data || {});
-      setRequestTimeseries(Array.isArray(reqRes?.data) ? reqRes.data : []);
+      const rawReq = Array.isArray(reqRes?.data) ? reqRes.data : [];
+      setRequestTimeseries(rawReq.map((item: any) => ({
+        ...item,
+        time_bucket: formatClientTimeShort(item.time_bucket)
+      })));
       setStatusTimeseries(Array.isArray(statusRes?.data) ? statusRes.data : []);
     } catch (e) {
       console.error(e);
